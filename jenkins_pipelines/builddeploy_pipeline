@@ -1,0 +1,162 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'REPO_NAME', defaultValue: 'javaapp', description: 'Enter repository name')
+        string(name: 'REPO_VERSION', defaultValue: 'latest', description: 'Enter version number')
+        string(name: 'KUBE_API_SERVER', defaultValue: 'https://controlplane:6443', description: 'Enter the kubernetes api server url')
+    }
+
+    tools {
+        jdk 'jdk17'
+        maven 'maven3'
+    }
+
+    environment {
+        SCANNER_HOME = tool 'sonar-scanner'
+        TRIVY_IMAGE_REPORT = "trivy-image-report.txt"
+        IMAGE_NAME = "${params.REPO_NAME}:${params.REPO_VERSION}"
+    }
+    
+    stages {
+        stage('1. Git Checkout') {
+            steps {
+                git branch: 'main', credentialsId: 'git-cred', url: 'https://github.com/ynaji80/Devops_javaApp.git'
+            }
+        }
+
+        stage('2.Compile source code') {
+            steps {
+                sh "mvn compile"
+            }
+        }
+
+        stage('3.Test source code') {
+            steps {
+                sh "mvn test"
+            }
+        }
+
+        stage('4.Trivy Scan') {
+            steps {
+                sh "trivy fs . > trivy-report.txt"
+            }
+        }
+
+        stage('5. SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv ('sonar-server') {
+                    sh """
+                    $SCANNER_HOME/bin/sonar-scanner \
+                    -Dsonar.projectName=JavaApp \
+                    -Dsonar.projectKey=JavaApp \
+                    -Dsonar.java.binaries=.
+                    """
+                }
+            }
+        }
+        
+        stage('6. Quality Gate') {
+            steps {
+                script {
+                waitForQualityGate abortPipeline: false, 
+                credentialsId: 'sonar-token'
+                }
+            }
+        }
+
+        stage ('7. Build') {
+            steps {
+                sh "mvn package"
+            }
+        }
+
+        stage('8. Publish Artefact to Nexus') {
+            steps {
+                withMaven (globalMavenSettingsConfig: 'global-settings', mavenSettingsConfig: '', traceability: true) {
+                    sh "mvn deploy"
+                }
+            }
+        }
+
+        stage('9. Build Docker Image') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'reg-cred', toolName: 'docker') {
+                        sh "docker build -t ${params.REPO_NAME}:latest ."
+                    }
+                }  
+            }
+        }
+
+        stage('10. Scan Docker Image') {
+            steps {                       
+                sh "trivy image ${params.REPO_NAME}:latest -o ${TRIVY_IMAGE_REPORT}"
+            }  
+        }
+
+        stage('11. Push Docker Image') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'reg-cred', toolName: 'docker') {
+                        sh "docker push ${params.REPO_NAME}:latest"
+                    }
+                }  
+            }
+        }
+
+        stage('12. Deploy to Kubernetes') {
+            steps {
+                withKubeConfig(caCertificate: '', clusterName: 'kubernetes', contextName: '', credentialsId: 'k8s-cred', namespace: 'jenkins-sa', restrictKubeConfigAccess: false, serverUrl: "${params.KUBE_API_SERVER}") {
+                    def IMAGE_NAME = "${params.REPO_NAME}:${params.REPO_VERSION}"
+                    // Update the image in the Kubernetes deployment file
+                    sh "sed -i 's|image: .*|image: ${IMAGE_NAME}|' k8s_manifests/deployment-service.yaml"
+                    // Apply the updated Kubernetes manifests
+                    sh "kubectl apply -f k8s_manifests/deployment-service.yaml"
+                }
+            }
+        }
+
+    }
+
+    post {
+        success {
+            emailext subject: "✅ Jenkins Pipeline Success: ${JOB_NAME} #${BUILD_NUMBER}",
+                     mimeType: 'text/html',
+                     body: """
+                     <html>
+                        <body>
+                            <h2 style="color: green;">Jenkins Pipeline Succeeded 🚀</h2>
+                            <p><strong>Job:</strong> ${JOB_NAME}</p>
+                            <p><strong>Build Number:</strong> ${BUILD_NUMBER}</p>
+                            <p><strong>Deployed Image:</strong> ${IMAGE_NAME}</p>
+                            <h3>📜 Trivy Security Scan Report (Attached)</h3>
+                            <p>View the Trivy security scan report below.</p>
+                        </body>
+                     </html>
+                     """,
+                     attachLog: true,
+                     attachmentsPattern: "${TRIVY_IMAGE_REPORT}",
+                     recipientProviders: [[$class: 'DevelopersRecipientProvider']],
+                     to: 'najiyounes80@gmail.com'
+        }
+        failure {
+            emailext subject: "❌ Jenkins Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}",
+                     mimeType: 'text/html',
+                     body: """
+                     <html>
+                        <body>
+                            <h2 style="color: red;">Jenkins Pipeline Failed ❌</h2>
+                            <p><strong>Job:</strong> ${JOB_NAME}</p>
+                            <p><strong>Build Number:</strong> ${BUILD_NUMBER}</p>
+                            <h3>🔍 Check the logs for more details.</h3>
+                        </body>
+                     </html>
+                     """,
+                     attachLog: true,
+                     attachmentsPattern: "${TRIVY_IMAGE_REPORT}",
+                     recipientProviders: [[$class: 'DevelopersRecipientProvider']],
+                     to: 'najiyounes80@gmail.com'
+        }
+    }    
+}

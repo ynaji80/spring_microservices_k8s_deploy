@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment # Kubernetes resource kind we are creating
+metadata:
+  name: javaapp-deployment
+spec:
+  selector:
+    matchLabels:
+      app: javaapp
+  replicas: 1 
+  template:
+    metadata:
+      labels:
+        app: javaapp
+    spec:
+      containers:
+        - name: javaapp
+          image: ynaji80/javaapp:latest # Image that will be used to containers in the cluster
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080 # The port that the container is running on in the cluster
+
+
+---
+
+apiVersion: v1
+kind: Service 
+metadata:
+  name: javaapp-svc
+spec:
+  selector:
+    app: javaapp
+  ports:
+    - protocol: "TCP"
+      port: 80
+      targetPort: 8080 
+  type: LoadBalancer
