@@ -8,12 +8,12 @@
 		<version>2.5.6</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.javaproject</groupId>
+	<groupId>com.javaproject.services</groupId>
 	<artifactId>database_service_project</artifactId>
 	<version>0.0.7</version>
 	<name>database_service_project</name>
 	<description>Project for Spring Boot</description>
-	<packaging>jar</packaging>
+	<packaging>pom</packaging>
 	<properties>
 		<java.version>11</java.version>
 		<jacoco.version>0.8.7</jacoco.version>
@@ -24,6 +24,14 @@
 		
 	</properties>
 
+	<modules>
+        <module>admin-service</module>
+        <module>employee-service</module>
+        <module>department-service</module>
+        <module>organization-service</module>
+        <module>gateway-service</module>
+    </modules>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.thymeleaf.extras</groupId>
@@ -33,7 +41,13 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
-
+		<dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+        </dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jdbc</artifactId>
@@ -92,7 +106,11 @@
 					</excludes>
 				</configuration>
 			</plugin>
-
+			 <plugin>
+                <groupId>com.google.cloud.tools</groupId>
+                <artifactId>jib-maven-plugin</artifactId>
+                <version>3.4.6</version>
+            </plugin>
 			<plugin>
     <groupId>org.jacoco</groupId>
     <artifactId>jacoco-maven-plugin</artifactId>
