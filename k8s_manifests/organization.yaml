@@ -1,0 +1,61 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: organization
+data:
+  application.properties: |-
+    spring.data.mongodb.host: mongodb
+    spring.data.mongodb.database: admin
+    spring.data.mongodb.authentication-database: admin
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: organization
+  labels:
+    app: organization
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: organization
+  template:
+    metadata:
+      labels:
+        app: organization
+    spec:
+      serviceAccountName: spring-cloud-kubernetes
+      containers:
+      - name: organization
+        image: ynaji80/organization
+        ports:
+        - containerPort: 8080
+        env:
+          - name: SPRING_CLOUD_BOOTSTRAP_ENABLED
+            value: "true"
+          - name: SPRING_CLOUD_KUBERNETES_SECRETS_ENABLEAPI
+            value: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: organization
+  labels:
+    app: organization
+    spring-boot: "true"
+spec:
+  ports:
+    - port: 8080
+      protocol: TCP
+  selector:
+    app: organization
+  type: ClusterIP
+---
+kind: Secret
+apiVersion: v1
+metadata:
+  name: organization
+data:
+  spring.data.mongodb.password: ****
+  spring.data.mongodb.username: ******
+type: Opaque
